@@ -1,0 +1,102 @@
+name: API Test Suite
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+
+jobs:
+  api-tests:
+    name: Run API Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Newman API Tests
+        id: newman
+        continue-on-error: true
+        run: |
+          BASE_URL="${{ secrets.BASE_URL || 'https://jsonplaceholder.typicode.com' }}"
+          newman run postman-collection.json -e postman-environment.json --env-var "base_url=$BASE_URL" --reporters cli,json,junit --reporter-json-export newman-report.json --reporter-junit-export newman-report.xml
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: newman-test-results
+          path: |
+            newman-report.json
+            newman-report.xml
+            newman-report.html
+          retention-days: 30
+      
+      - name: Parse test results
+        if: always()
+        run: |
+          if [ -f newman-report.json ]; then
+            echo "## API Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Extract test statistics using jq (if available) or basic parsing
+            if command -v jq &> /dev/null; then
+              TOTAL=$(jq -r '.run.stats.tests.total' newman-report.json)
+              PASSED=$(jq -r '.run.stats.tests.total - .run.stats.tests.failed' newman-report.json)
+              FAILED=$(jq -r '.run.stats.tests.failed' newman-report.json)
+              ASSERTIONS=$(jq -r '.run.stats.assertions.total' newman-report.json)
+              ASSERTIONS_PASSED=$(jq -r '.run.stats.assertions.total - .run.stats.assertions.failed' newman-report.json)
+              ASSERTIONS_FAILED=$(jq -r '.run.stats.assertions.failed' newman-report.json)
+              
+              echo "| Metric | Count |" >> $GITHUB_STEP_SUMMARY
+              echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Tests | $TOTAL |" >> $GITHUB_STEP_SUMMARY
+              echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+              echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+              echo "| Total Assertions | $ASSERTIONS |" >> $GITHUB_STEP_SUMMARY
+              echo "| Assertions Passed | $ASSERTIONS_PASSED |" >> $GITHUB_STEP_SUMMARY
+              echo "| Assertions Failed | $ASSERTIONS_FAILED |" >> $GITHUB_STEP_SUMMARY
+              
+              # Show failed tests if any
+              if [ "$FAILED" -gt 0 ] || [ "$ASSERTIONS_FAILED" -gt 0 ]; then
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "### ❌ Test Failures" >> $GITHUB_STEP_SUMMARY
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "Some tests failed. Check the logs and artifacts for details." >> $GITHUB_STEP_SUMMARY
+              else
+                echo "" >> $GITHUB_STEP_SUMMARY
+                echo "### ✅ All Tests Passed" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "Test results generated. Check artifacts for detailed report." >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
+      
+      - name: Display test failures
+        if: failure()
+        run: |
+          echo "## Test Execution Logs" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          if [ -f newman-report.json ]; then
+            cat newman-report.json | head -100 >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Fail if tests failed
+        if: steps.newman.outcome == 'failure'
+        run: |
+          echo "❌ API tests failed. Check the logs and artifacts for details."
+          exit 1
+

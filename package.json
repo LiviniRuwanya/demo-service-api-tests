@@ -1,0 +1,25 @@
+{
+  "name": "api-test-suite-demo-service",
+  "version": "1.0.0",
+  "description": "Automated API test suite for Demo Service using Postman/Newman",
+  "main": "index.js",
+  "scripts": {
+    "test": "newman run postman-collection.json -e postman-environment.json --reporters cli,json,html --reporter-json-export newman-report.json --reporter-html-export newman-report.html",
+    "test:ci": "newman run postman-collection.json -e postman-environment.json --reporters cli,json,junit --reporter-json-export newman-report.json --reporter-junit-export newman-report.xml",
+    "test:verbose": "newman run postman-collection.json -e postman-environment.json --reporters cli,json,html --reporter-json-export newman-report.json --reporter-html-export newman-report.html --verbose"
+  },
+  "keywords": [
+    "api-testing",
+    "postman",
+    "newman",
+    "automation",
+    "ci-cd"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "newman": "^6.0.0",
+    "newman-reporter-html": "^1.0.5"
+  }
+}
+
